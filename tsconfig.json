@@ -2,6 +2,14 @@
   "compilerOptions": {
     /* Visit https://aka.ms/tsconfig.json to read more about this file */
     "baseUrl": "./src",
+    "paths": {
+      "@controller/*": ["controller/*"],
+      "@utils/*": ["utils/*"],
+      "@models/*": ["models/*"],
+      "@middleware/*": ["middleware/*"],
+      "@customTypes/*": ["customTypes/*"]
+    },
+    "outDir": "dist",
     /* Projects */
     // "incremental": true,                              /* Enable incremental compilation */
     // "composite": true,                                /* Enable constraints that allow a TypeScript project to be used with project references. */

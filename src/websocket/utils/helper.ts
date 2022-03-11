@@ -1,4 +1,4 @@
-import Message from '../../types/message'
+import Message from '../../customTypes/message'
 
 const decodeMessage = (buffer: Buffer) : Message | string => {
     const payload = buffer.toString();

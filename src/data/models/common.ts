@@ -1,6 +1,16 @@
-import {Schema, model} from 'mongoose';
+import {Schema, model, Types, SchemaTypes } from 'mongoose';
+ interface Summary {
+    cost: number,
+    length: number,
+    time: number,
+    maxLat: number,
+    minLat: number,
+    maxLon: number,
+    minLon: number
+ }
 
-const SummarySchema = new Schema({
+
+const SummarySchema = new Schema<Summary>({
     cost: Number,
     length: Number,
     time: Number,
@@ -8,9 +18,27 @@ const SummarySchema = new Schema({
     minLat: Number,
     maxLon: Number,
     minLon: Number
-})
+}, { _id : false })
 
-const ManeuverSchema = new Schema({
+interface Maneuver {
+    beginShapeIndex: number,
+    cost: number,
+    length: number,
+    endShapeIndex: number,
+    instruction: string,
+    roundaboutExitCount: number,
+    time: number,
+    travelMode: string,
+    travelType: string,
+    type: number,
+    verbalMultiCue: string,
+    verbalPostTransitionInstruction: string,
+    verbalPreTransitionInstruction: string,
+    verbalSuccinctTransitionInstruction: string,
+    verbalTransitionAlertInstruction: string,
+}
+
+const ManeuverSchema = new Schema<Maneuver>({
     beginShapeIndex: Number,
     cost: Number,
     length: Number,
@@ -26,17 +54,35 @@ const ManeuverSchema = new Schema({
     verbalPreTransitionInstruction: String,
     verbalSuccinctTransitionInstruction: String,
     verbalTransitionAlertInstruction: String,
-})
+}, { _id : false })
 
-const LegSchema = new Schema({
+interface Leg {
+    maneuvers?: Types.DocumentArray<Maneuver>,
+    shape: string,
+    summary: Summary,
+    edgeID: Types.DocumentArray<number>
+}
+
+const LegSchema = new Schema<Leg>({
     maneuvers: [ManeuverSchema],
     shape: String,
     summary: SummarySchema,
-    edgeId: [Number]
-});
+    edgeID: [Number]
+}, { _id : false });
 
-export const DirectionSchema = new Schema({
-    userId: { type: Schema.Types.ObjectId, ref: 'User' },
+export interface Direction {
+    language: string,
+    legs: Types.DocumentArray<Leg>,
+    summary: Summary,
+    shape: string,
+    locations: [],
+    geometry: {
+        type: string,
+        coordinates: Array<Array<number>>
+    },
+}
+
+export const DirectionSchema = new Schema<Direction>({
     language: String,
     legs: [LegSchema],
     summary: SummarySchema,
@@ -50,4 +96,4 @@ export const DirectionSchema = new Schema({
                 },
             coordinates: [[Number]]
         }
-})
+}, { _id : false })

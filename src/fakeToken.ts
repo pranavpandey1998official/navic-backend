@@ -1,8 +1,8 @@
 import jwt from 'jsonwebtoken';
-import {  JWT_SECRET } from './utils/contants';
+import {  JWT_AUTH_SECRET } from './utils/contants';
 var a = jwt.sign({
-    id: '000000017a0bb682ce84e60e',
+    id: '6280e87789e5e72b46194b82',
     name: 'Pranav',
-}, JWT_SECRET)
+}, JWT_AUTH_SECRET)
 
 console.log(a);

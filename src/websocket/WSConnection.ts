@@ -1,76 +1,168 @@
 import WebSocket from 'ws';
 import Redis from 'ioredis';
-import Message, { Message_Location_Update, Message_Request_Ride } from '../customTypes/message'
+import Message, { Message_Location_Update, Message_Request_Ride, Message_ride_request_accept, Message_ride_request_reject, Message_ride_stop, 
+    Message_subscribe_for_location_update, Message_unsubscribe_for_location_update, Message_unsubscribe_for_all_location_update
+
+} from '../customTypes/message'
 import { MESSAGE_TYPE, CHANNEL, QUEUE, REQEST_TIMEOUT, LOCATION_HASH } from './utils/constants';
 import { encodeMessage, decodeMessage } from './utils/helper';
+import createLogger from '@utils/logger';
 
+
+var logger = createLogger("websocket.WSConnection")
 class WSConnection {
     ws: WebSocket;
-    userId: string;
+    userID: string;
     redis: Redis.Redis;
     rChannelLisner: Redis.Redis;
     mqListner: Redis.Redis;
+    isClosed: Boolean;
 
-    constructor(ws: WebSocket, userId: string) {
+    constructor(ws: WebSocket, userID: string) {
         this.ws = ws;
-        this.userId = userId
+        this.userID = userID
         this.redis = new Redis();
         this.rChannelLisner = new Redis();
         this.mqListner = new Redis();
         this.consume()
         ws.on('message', this.onMessage)
+        this.isClosed = false;
+        ws.on('close', this.onClose)
     }
 
     consume() {
-        this.mqListner.blpop(`${QUEUE.MESSAGE}:${this.userId}`, 0).then((message) => {
+        this.mqListner.blpop(`${QUEUE.MESSAGE}:${this.userID}`, 0).then(([queue, data]) => {
+            const message = decodeMessage(data)
+            if(typeof message === 'string') {
+                logger.error(`cannot decode the message from {QUEUE.MESSAGE}:${this.userID} ${message}`)
+                return;
+            }
             console.log(message)
+            switch(message.type) {
+                case MESSAGE_TYPE.RIDER_RIDE_REQUEST:
+                    this.ws.send(JSON.stringify(message))
+                    break;
+                case MESSAGE_TYPE.RIDE_REQUEST_REJECT:
+                    this.ws.send(JSON.stringify(message))
+                    break;
+                case MESSAGE_TYPE.RIDE_REQUEST_ACCEPT:
+                    this.ws.send(JSON.stringify(message))
+                    break;
+                case MESSAGE_TYPE.RIDE_STOP:
+                    this.ws.send(JSON.stringify(message))
+                    break;
+                default:
+                    logger.error(`Unknown message found ${message.type} ${JSON.stringify(message)}`)
+            }
         })
         .catch((e) => {
-            console.log(e)
+            if(!this.isClosed) {
+                logger.error(`cannot push message to list userID: ${this.userID} message:${e}`)
+            }
         })
         .finally(() => {
-            this.consume()
+            if(!this.isClosed) {
+                this.consume()
+            }
         })
+        this.rChannelLisner.on("message", (channel, message) => {
+            this.ws.send(message)
+        })
+    }
+
+    onClose = (event: any) => {
+        this.isClosed = true
+        this.mqListner.disconnect()
+        this.rChannelLisner.disconnect()
+        this.redis.disconnect()
     }
     
     onMessage = (data: Buffer) => {
         const message = decodeMessage(data)
 
         if(typeof message === 'string') {
-            console.log(message)
+            logger.error(`cannot decode the message from client ${message}`)
             return;
         }
-        switch(message.type) {
-            case MESSAGE_TYPE.LOCATION_UPDATE:
-                this.handleLocationUpdate(message)
-                break;
-            
-            case MESSAGE_TYPE.RIDER_REQUEST_RIDE:
-                this.handleRiderRequestRide(message)
-                break;
-            
-            // case MESSAGE_TYPE.DRIVER_ACCEPT_RIDE:
-            //     break;
-            // case MESSAGE_TYPE.DRIVER_REJECT_RIDE:
-            //     break;
-            // case MESSAGE_TYPE.RIDER_SYNACK_RIDE:
-            //     break;
-            default:
-                console.log(`${message} not supported`)
-        }   
+        console.log(JSON.stringify(message));
+        try {
+            switch(message.type) {
+                case MESSAGE_TYPE.LOCATION_UPDATE:
+                    this.handleLocationUpdate(message)
+                    break;
+                
+                case MESSAGE_TYPE.RIDER_RIDE_REQUEST:
+                    this.handleRiderRequestRide(message)
+                    break;
+                
+                case MESSAGE_TYPE.RIDE_REQUEST_REJECT:
+                    this.handleRideRequestReject(message)
+                    break;
+                
+                case MESSAGE_TYPE.RIDE_REQUEST_ACCEPT:
+                    this.handleRideRequestAccept(message)
+                    break;
+                
+                case MESSAGE_TYPE.RIDE_STOP:
+                    this.handleRideStop(message)
+                    break;
+    
+                case MESSAGE_TYPE.SUBSCRIBE_FOR_LOCATION_UPDATE:
+                    this.handleSubscribeForLocationUpdate(message)
+                    break;
+                
+                case MESSAGE_TYPE.UNSUBSCRIBE_FOR_LOCATION_UPDATE:
+                    this.handleUnsubscribeForLocationUpdate(message)
+                    break;
+                case MESSAGE_TYPE.UNSUBSCRIBE_FOR_ALL_LOCATION_UPDATE:
+                    this.handleUnsubscribeForAllLocationUpdate(message)
+                default:
+                    logger.error(`${JSON.stringify(message)} not supported`)
+            }
+        } catch(e) {
+            logger.error(e)
+        }    
     }
 
-    handleLocationUpdate = (message: Message_Location_Update) => {
-        this.redis.publish(`${CHANNEL.LOCATION}:${this.userId}`, JSON.stringify(message))
-        this.redis.hset(LOCATION_HASH, this.userId ,JSON.stringify(message))
+    handleLocationUpdate = async (message: Message_Location_Update) => {
+        await this.redis.publish(`${CHANNEL.LOCATION}:${this.userID}`, JSON.stringify(message))
+        await this.redis.hset(LOCATION_HASH, this.userID ,JSON.stringify(message))
     }
 
-    handleRiderRequestRide = (message: Message_Request_Ride) => {
-        if(message.requestTS< Date.now() - REQEST_TIMEOUT) {
+    handleRiderRequestRide = async (message: Message_Request_Ride) => {
+        if(message.createdTS< Date.now() - REQEST_TIMEOUT) {
             return
             // maybe console log that the messge was timedout
         }
-        this.redis.rpush(`${QUEUE.MESSAGE}:${message.driverId}`, encodeMessage(message))
+        await this.redis.rpush(`${QUEUE.MESSAGE}:${message.driverID}`, encodeMessage(message))
+    }
+
+    handleRideRequestReject = async (message: Message_ride_request_reject) => {
+        if(message.createdTS < Date.now() - REQEST_TIMEOUT) {
+             return
+            // maybe console log that the messge was timedout
+        }
+        await this.redis.rpush(`${QUEUE.MESSAGE}:${message.riderID}`, encodeMessage(message))
+    }
+
+    handleRideRequestAccept = async (message: Message_ride_request_accept) => {
+      await this.redis.rpush(`${QUEUE.MESSAGE}:${message.riderID}`, encodeMessage(message))
+    }
+
+    handleRideStop = async (message: Message_ride_stop) => {
+      await this.redis.rpush(`${QUEUE.MESSAGE}:${message.receiverID}`, encodeMessage(message))
+    }
+
+    handleSubscribeForLocationUpdate = async (message: Message_subscribe_for_location_update) => {
+        await this.rChannelLisner.subscribe(`${CHANNEL.LOCATION}:${message.userID}`)
+    }
+
+    handleUnsubscribeForLocationUpdate = async (message: Message_unsubscribe_for_location_update) => {
+        await this.rChannelLisner.unsubscribe(`${CHANNEL.LOCATION}:${message.userID}`)
+    }
+
+    handleUnsubscribeForAllLocationUpdate = async(message: Message_unsubscribe_for_all_location_update) => {
+        await this.rChannelLisner.unsubscribe()
     }
 
 }

@@ -4,13 +4,13 @@ import { DirectionSchema, Direction } from './common';
 interface Trip {
     userID: Types.ObjectId,
     direction: Direction
-    startTS: number
+    createdTS: number
 }
 
 const TripSchema = new Schema<Trip>({
     userID: { type: Schema.Types.ObjectId, ref: 'User' },
     direction: DirectionSchema,
-    startTS: Number,
+    createdTS: Number,
 });
 
 TripSchema.index({ userId: 1}, { unique: true } )

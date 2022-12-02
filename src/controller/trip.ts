@@ -1,63 +1,67 @@
 
-import {Router} from 'express';
+import {Response, Router} from 'express';
+import { z } from 'zod';
 
-import { deleteTrip, getTrip, insertTrip } from 'service/trip';
+import { deleteTrip, getTripFromUserID, insertTrip } from 'service/trip';
 import createLogger from '@utils/logger';
 import { Request } from '@customTypes/connection';
 import { verifyToken } from '@middleware/auth';
+import validateRequest from '@middleware/validateRequst';
+
 
 var router = Router()
 const logger = createLogger('@contoller/trip')
 
+const SCHEMA = {
+    START: z.object({
+        direction: z.any(),
+    }),
+    END: z.object({
+        tripID: z.string().min(1)
+    }),
+    RIDE_FROM_TRIP: z.object({
+        tripID: z.string().min(1)
+    })
+}
+
 // Started by driver
 router.use(verifyToken);
 
-router.post('/start', async function(req: Request, res) {
-    const direction = req.body
-    const userID = req.userID
-    if(!userID) {
-        logger.warn("userID is not found /start")
-        return res.status(500).send("")
-    }
+router.post('/start',
+    validateRequest({
+        body: SCHEMA.START
+    }), 
+async function(req: Request, res, next) {
+    const userID = req.userID!!
+    const body: z.infer<typeof SCHEMA.START> = req.body
     try {
-        const trip = await insertTrip(userID, direction)
+        const trip = await insertTrip(userID, body.direction)
         return res.send(trip)
     } catch(e) {
-        logger.error(e)
-        return res.status(421).send("Cannot create")
+        next(e)
     }
 })
 
-router.post('/end', async function(req: Request, res) {
-    const tripID = req.body
-    const userID = req.userID
-    if(!userID) {
-        logger.warn("userID is not found /end")
-        return res.status(500).send("")
-    }
+router.post('/end', async function(req: Request, res: Response, next) {
+    const userID = req.userID!!
+    const body: z.infer<typeof SCHEMA.END> = req.body
     try {
-        await deleteTrip(userID, tripID)
-        return res.send(true)
+        await deleteTrip(userID, body.tripID)
+        return res.send({
+            success: true
+        })
     } catch(e) {
-        logger.error(e)
-        return res.status(409).send("Cannot delete")
+       next(e)
     }
 })
 
-router.get('/ongoing', async function(req: Request, res) {
-    const userID = req.userID
-    if(!userID) {
-        logger.warn("userID is not found /ongoing")
-        return res.status(500).send("")
-    }
+router.get('/ongoing', async function(req: Request, res, next) {
+    const userID = req.userID!!
     try {
-        const trip = await getTrip(userID);
-        if(trip) {
-            return res.send(trip)
-        }
-        return res.status(404).send("No ongoing trip found")
+        const trip = await getTripFromUserID(userID);
+        return res.send(trip)
     } catch(e) {
-        res.status(500).send("Internal Server error")
+        next(e)
     }
 })
 

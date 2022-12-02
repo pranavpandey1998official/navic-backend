@@ -1,17 +1,21 @@
 import Message from '../../customTypes/message'
+import createLogger from '@utils/logger';
 
-const decodeMessage = (buffer: Buffer) : Message | string => {
+var logger = createLogger("websocket.WSConnection.decoder")
+
+const decodeMessage = (buffer: Buffer | String) : Message | string => {
     const payload = buffer.toString();
     try {
         const data: any =  JSON.parse(payload);
         return <Message>data;
     } catch(e) {
+        logger.error(e)
         return payload;
     }
 }
 
 const encodeMessage = (message: Message) => {
-    return Buffer.from(JSON.stringify(message))
+    return JSON.stringify(message)
 }
 
 export { decodeMessage, encodeMessage };
